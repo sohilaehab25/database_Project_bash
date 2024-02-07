@@ -135,14 +135,14 @@ function table_Menu {
 function create_table {
     read -p "Enter the name of the table: " table_name
 
-    while [[ ! "$table_name" =~ ^[A-Za-z]*$ ]]; do
+    while ! [[ "$table_name" =~ ^[A-Za-z][A-Za-z1-9]*$ ]]; do
         echo "Please enter a valid string name for your table :D"
         read -p "Enter your table name: " table_name
     done
 
     if [ -f "$HOME/main/$database_name/$table_name" ]; then
         echo "The table $table_name already exists. Please enter another name."
-        Table_Menu
+        table_Menu
     fi
 
     typeset -i column_primary_key
@@ -151,12 +151,7 @@ function create_table {
 
     read -p "Enter the number of table columns: " column_number
 
-    while [[ $column_number < 2 ]]
-    do
-	    if ! [[ $column_number < 2 ]] 
-	    then
-		    break
-	    fi
+    while [[ $column_number -lt 2 ]]; do
         echo "You entered a very few number of columns."
         read -p "Enter a valid number of columns: " column_number
     done
@@ -166,12 +161,14 @@ function create_table {
         touch "$HOME/main/$database_name/.$table_name"
         column_primary_key=1
         data=""
+        echo "note: you need to make your primary key the first column :)."
 
         until [ $column_primary_key -gt $column_number ]; do
             read -p "Enter the name of column $column_primary_key: " column_name
 
-            while ! [[ "$column_name" =~ ^[A-Za-z]*$ ]]; do
-                echo "Column name must be a string."
+            # Validate column name
+            while ! [[ "$column_name" =~ ^[A-Za-z][A-Za-z1-9]*$ ]]; do
+                echo "Column name must start with a letter and can contain letters or numbers."
                 read -p "Enter a valid column name: " column_name
             done
 
@@ -189,28 +186,35 @@ function create_table {
 
             Info+="|$col_type"
 
-            if [ "$col_type" == "int" ]; then
-                if [ "$column_primary_key" -eq 1 ]; then
+            # Validate primary key selection
+            if [ "$column_primary_key" -eq 1 ]; then
+                while true; do
                     read -p "Do you want to make $column_name a primary key? [y/n] " check
-
                     if [ "$check" = "y" ]; then
                         Info+="|primary_key|"
                         echo "Your column $column_name became the primary key for $table_name table."
+                        break
+                    elif [ "$check" = "n" ]; then
+                        echo "The first column must be the primary key. Please make a selection."
+                    else
+                        echo "Please enter 'y' for yes or 'n' for no."
                     fi
-                fi
+                done
             fi
 
             data+="|"
 
-            echo $data > "$PWD/$table_name"
-            echo $Info >> "$PWD/.$table_name"
+            echo "$data" > "$HOME/main/$database_name/$table_name"
+            echo "$Info" >> "$HOME/main/$database_name/.$table_name"
             column_primary_key+=1
         done
 
         echo "Your table $table_name is created successfully (:"
-        cat "$table_name"
+        cat "$HOME/main/$database_name/$table_name"
     fi
 }
+
+
 
 #-------------------------- drop_table_funciotn -----------------------------
 function drop_table {
@@ -285,9 +289,9 @@ function insert_into_table {
                 done
             fi
 
-            if [[ "$type" == "str" ]]; then
-                while ! [[ "$data_user" =~ ^[A-Za-z]*$ ]]; do
-                    echo "Your data $data_user is invalid. It must be of type $type!"
+            if [[ "$type" == "string" ]]; then
+               while ! [[ "$data_user" =~ ^[A-Za-z]+[A-Za-z1-9]*$ ]]; do
+                    echo "Your data $data_user is invalid. It must be of type $type! "
                     read -p "Enter $name ($type): " data_user
                 done
             fi
