@@ -341,115 +341,95 @@ function insert_into_table {
 
 #-------------------------------------update_table-------------------------------------
 function Table_update {
-    read -p "Enter Table name: " table_name
-    
-    table_path="$HOME/main/$database_name/$table_name"
 
-    if [[ ! -f "$table_path" ]]; then
-        echo "Table '$table_name' does not exist in database '$database_name'."
-        return
-    fi
+    read -p "Enter your table name: " table_name
 
-    if [[ ! -s "$table_path" ]]; then
-        echo "Table '$table_name' is empty (contains only a header)."
-        return
-    fi
-
-    cat "$table_path"
-    while true; do
-        # Ask for primary key column name and value
-        read -p "Enter the primary key column name: " pk_column
-        if ! head -n 1 "$table_path" | grep -qw "$pk_column"; then
-            echo "Primary key column '$pk_column' does not exist in the table header."
-            continue
-        fi
-
-        read -p "Enter the value of the primary key to update: " pk_value
-        if ! grep -q "^$pk_value" "$table_path"; then
-            echo "Record with $pk_column = $pk_value does not exist in the table."
-            continue
-        fi
-
-        # Update other columns
-        updated_columns=()
+    if [[ -f "$PWD/$table_name" ]]; then
         while true; do
-            read -p "Enter the column name to update: " update_column
-            if ! head -n 1 "$table_path" | grep -qw "$update_column"; then
-                echo "Column '$update_column' does not exist in the table header."
+            column_number=$(awk 'END{ print NR }' ".$table_name")
+            typeset -i i
+            i=1
+
+            # Ask for primary key column name and value
+            read -p "Enter the primary key column name: " pk_column
+            pk_value=""
+            if grep -q "^$pk_column|" "$PWD/$table_name"; then
+                read -p "Enter the value of the primary key to update: " pk_value
+                if ! grep -q "^$pk_value|" "$PWD/$table_name"; then
+                    echo "Record with $pk_column = $pk_value does not exist in the table."
+                    continue
+                fi
+            else
+                echo "Primary key column '$pk_column' does not exist in the table."
                 continue
             fi
 
-            # Get the index of the update column
-            update_column_index=$(awk -F '|' -v col="$update_column" 'NR==1 { for (i=1; i<=NF; i++) { if ($i == col) print i } }' "$table_path")
-            update_column_type=$(awk -F '|' -v update_idx="$update_column_index" 'NR==2 { print $update_idx }' "$HOME/main/$database_name/.$table_name")
+            row=""
 
-            # Prompt the user for the new value
-            read -p "Enter the new value for $update_column ($update_column_type): " new_value
+            while ((i <= column_number)); do
+                name=$(awk -F'|' '{if(NR=='$i') {print $1}}' ".$table_name")
+                type=$(awk -F'|' '{if(NR=='$i') {print $2}}' ".$table_name")
+                primarykey=$(awk -F'|' '{if(NR=='$i') {print $3}}' ".$table_name")
 
-            # Validate the input based on the data type
-            if [[ $update_column_type == "int" ]]; then
-                if ! [[ $new_value =~ ^[0-9]+$ ]]; then
-                    echo "Invalid input. Please enter an integer value for '$update_column'."
+                # Skip primary key column
+                if [[ "$name" == "$pk_column" ]]; then
+                    ((i++))
                     continue
                 fi
-            elif [[ $update_column_type == "string" ]]; then
-                if ! [[ $new_value =~ ^[A-Za-z0-9]+$ ]]; then
-                    echo "Invalid input. Please enter a string value for '$update_column'."
-                    continue
+
+                read -p "Enter the new value of $name ($type): " data_user
+
+                # Validate input based on data type
+                while true; do
+                    if [[ "$type" == "int" ]]; then
+                        if [[ "$data_user" =~ ^[0-9]+$ ]]; then
+                            break
+                        else
+                            echo "Your data $data_user must be an integer. Please enter a valid value!"
+                            read -p "Enter $name ($type): " data_user
+                        fi
+                    elif [[ "$type" == "string" ]]; then
+                        if [[ "$data_user" =~ ^[A-Za-z]+[A-Za-z1-9]*$ ]]; then
+                            break
+                        else
+                            echo "Your data $data_user is invalid. It must be of type $type! "
+                            read -p "Enter $name ($type): " data_user
+                        fi
+                    fi
+                done
+
+                if [ "$i" -eq "$column_number" ]; then
+                    row="$row$data_user|"
+                else
+                    row="$row$data_user|"
+                fi
+                ((i++))
+            done
+
+            # Update the record
+            if [[ -n "$pk_value" ]]; then
+                sed -i "/^$pk_value/s/^[^|]*/$row/" "$PWD/$table_name"
+                if [[ $? == 0 ]]; then
+                    echo "Data Updated Successfully :)"
+                else
+                    echo "Error Updating Data in Table $table_name :("
                 fi
             fi
 
-            # Update the record
-            awk -F '|' -v OFS='|' -v pk_col="$pk_column" -v pk_val="$pk_value" -v update_col="$update_column" -v new_val="$new_value" '
-                NR == 1 {
-                    for (i = 1; i <= NF; i++) {
-                        if ($i == pk_col) pk_index = i
-                        if ($i == update_col) update_index = i
-                    }
-                    print
-                }
-                NR > 1 {
-                    if ($pk_index == pk_val) {
-                        $update_index = new_val
-                        updated = 1
-                    }
-                    print $0
-                }
-                END {
-                    if (!updated) print "Record with", pk_col, "=", pk_val, "not found in the table."
-                }
-            ' "$table_path" > "$table_path.tmp" && mv "$table_path.tmp" "$table_path"
-
-            echo "Column '$update_column' updated successfully."
-            updated_columns+=("$update_column")
-
-            read -p "Do you want to update another column? (yes/no): " another_update
-            case $another_update in
+            read -p "Do you want to update another row? (yes/no): " update_again
+            case $update_again in
                 [Yy]*)
-                    continue
-                    ;;
+                    continue ;;
                 [Nn]*)
-                    break
-                    ;;
+                    break ;;
                 *)
-                    echo "Invalid choice. Please enter yes or no."
+                    echo "Invalid choice. Please enter 'yes' or 'no'."
                     ;;
             esac
         done
-
-        read -p "Do you want to update another primary key? (yes/no): " another_pk
-        case $another_pk in
-            [Yy]*)
-                continue
-                ;;
-            [Nn]*)
-                break
-                ;;
-            *)
-                echo "Invalid choice. Please enter yes or no."
-                ;;
-        esac
-    done
+    else
+        echo "File $table_name does not exist!"
+    fi
 }
 
 #------------------------------select all from Table ------------------------------------
@@ -466,7 +446,6 @@ function select_all_tabledata {
     fi
 }
 
-#---------------------------select spcific row--------------
 #---------------------------------Select_specific_row----------------------
 
 function Select_specific_row {
